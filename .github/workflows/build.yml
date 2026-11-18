@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -29,34 +31,38 @@ jobs:
           pip install pyinstaller requests
           pip install -r requirements.txt
 
-      - name: Download Real-ESRGAN Models
+      - name: Download Real-ESRGAN Models & Binaries
         shell: pwsh
         run: |
-          $modelsDir = "apps/models/realesrgan/models"
-          if (!(Test-Path $modelsDir)) { New-Item -ItemType Directory -Path $modelsDir -Force }
+          $targetDir = "apps/models/realesrgan"
+          if (!(Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force }
           
-          $baseUrl = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0"
-          $files = @(
-            "realesrgan-x4plus.bin",
-            "realesrgan-x4plus.param",
-            "realesrgan-x4plus-anime.bin",
-            "realesrgan-x4plus-anime.param",
-            "realesr-animevideov3-x2.bin",
-            "realesr-animevideov3-x2.param",
-            "realesr-animevideov3-x3.bin",
-            "realesr-animevideov3-x3.param",
-            "realesr-animevideov3-x4.bin",
-            "realesr-animevideov3-x4.param"
-          )
+          $zipUrl = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-windows.zip"
+          $tempZip = Join-Path $env:RUNNER_TEMP "realesrgan-windows.zip"
+          $tempExtract = Join-Path $env:RUNNER_TEMP "realesrgan-extracted"
+
+          Write-Host "Downloading Real-ESRGAN bundle from $zipUrl..."
+          Invoke-WebRequest -Uri $zipUrl -OutFile $tempZip -Headers @{ "User-Agent" = "Mozilla/5.0" }
           
-          foreach ($f in $files) {
-            $dest = Join-Path $modelsDir $f
-            if (!(Test-Path $dest)) {
-              Write-Host "Downloading $f..."
-              Invoke-WebRequest -Uri "$baseUrl/$f" -OutFile $dest
+          Write-Host "Extracting Real-ESRGAN bundle..."
+          Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force
+          
+          # Copiar la carpeta models/ y ejecutables requeridos
+          if (Test-Path (Join-Path $tempExtract "models")) {
+            Copy-Item -Path (Join-Path $tempExtract "models") -Destination $targetDir -Recurse -Force
+          }
+          if (Test-Path (Join-Path $tempExtract "realesrgan-ncnn-vulkan.exe")) {
+            Copy-Item -Path (Join-Path $tempExtract "realesrgan-ncnn-vulkan.exe") -Destination $targetDir -Force
+          }
+          foreach ($dll in @("vcomp140.dll", "vcomp140d.dll")) {
+            $dllPath = Join-Path $tempExtract $dll
+            if (Test-Path $dllPath) {
+              Copy-Item -Path $dllPath -Destination $targetDir -Force
             }
           }
-          Write-Host "Real-ESRGAN models ready for build."
+
+          Write-Host "Real-ESRGAN models and binaries ready for PyInstaller build."
+          Get-ChildItem -Path $targetDir -Recurse | Select-Object Name
 
       - name: Build Executable with PyInstaller
         run: pyinstaller main.spec
@@ -68,20 +74,23 @@ jobs:
       - name: Generate Release Tag Name
         id: tag_name
         run: |
-          if ("${{ github.ref }}" -match "refs/tags/") {
+          if ("${{ github.event_name }}" -eq "release") {
+            echo "TAG=${{ github.event.release.tag_name }}" >> $env:GITHUB_OUTPUT
+          } elseif ("${{ github.ref }}" -match "refs/tags/") {
             echo "TAG=${{ github.ref_name }}" >> $env:GITHUB_OUTPUT
           } else {
             $date = Get-Date -Format "yyyyMMdd-HHmm"
-            echo "TAG=v$date" >> $env:GITHUB_OUTPUT
+            echo "TAG=v1.1.5-$date" >> $env:GITHUB_OUTPUT
           }
 
-      - name: Create GitHub Release
+      - name: Publish Release Asset
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag_name.outputs.TAG }}
-          name: MediaHub-ImageTools ${{ steps.tag_name.outputs.TAG }}
+          name: "MediaHub-ImageTools ${{ steps.tag_name.outputs.TAG }}"
           files: |
             MediaHub-ImageTools.zip
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
