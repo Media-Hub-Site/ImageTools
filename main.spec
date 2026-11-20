@@ -15,19 +15,32 @@ hidden_imports = [
     'numpy',
     'rembg',
     'onnxruntime',
+    'pymatting',
+    'pooch',
+    'scipy.ndimage',
+    'scipy.spatial',
+    'scipy.sparse',
+    'scipy.sparse.linalg',
+    'skimage.morphology',
 ]
 hidden_imports += collect_submodules('apps.media_converter')
 hidden_imports += collect_submodules('core')
+for _pkg in ('rembg', 'pymatting', 'pooch'):
+    try:
+        hidden_imports += collect_submodules(_pkg)
+    except Exception:
+        pass
 
 datas = [
     ('assets', 'assets'),
     ('apps/models/realesrgan', 'apps/models/realesrgan'),
 ]
 
-try:
-    datas += collect_data_files('rembg')
-except Exception:
-    pass
+for _data_pkg in ('rembg', 'skimage'):
+    try:
+        datas += collect_data_files(_data_pkg)
+    except Exception:
+        pass
 
 a = Analysis(
     ['main.py'],

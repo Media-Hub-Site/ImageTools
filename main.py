@@ -1,7 +1,15 @@
 import sys
-import traceback
-from PyQt6.QtWidgets import QApplication, QMessageBox
 import os
+import io
+import traceback
+
+# Evitar errores de escritura en librerías como tqdm/pooch/onnxruntime cuando console=False en PyInstaller
+if sys.stdout is None:
+    sys.stdout = io.StringIO()
+if sys.stderr is None:
+    sys.stderr = io.StringIO()
+
+from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from apps.media_converter.ui.image_tools_window import ImageToolsWindow
 

@@ -240,30 +240,125 @@ class ImageRescalerLogic:
 
 
 class BackgroundRemoverLogic:
+    _LOCK = None
+    _SESSION_CACHE = {}
+
+    @classmethod
+    def _get_lock(cls):
+        if cls._LOCK is None:
+            import threading
+            cls._LOCK = threading.Lock()
+        return cls._LOCK
+
+    @classmethod
+    def _ensure_streams(cls):
+        import sys
+        import io
+        if sys.stdout is None:
+            sys.stdout = io.StringIO()
+        if sys.stderr is None:
+            sys.stderr = io.StringIO()
+
+    @classmethod
+    def _load_rembg(cls):
+        """Carga rembg y toda su cadena de dependencias en orden determinista para evitar
+        errores transitorios o circulares de lazy_loader en el primer uso."""
+        import sys
+        import importlib
+        cls._ensure_streams()
+
+        prereq_modules = [
+            "numpy",
+            "scipy",
+            "scipy.ndimage",
+            "scipy.spatial",
+            "scipy.sparse",
+            "scipy.sparse.linalg",
+            "skimage",
+            "skimage._shared",
+            "skimage.util",
+            "skimage.measure",
+            "skimage.draw",
+            "skimage.filters",
+            "skimage.morphology",
+            "numba",
+            "pymatting",
+            "onnxruntime",
+            "pooch",
+        ]
+
+        last_err = None
+        for attempt in range(3):
+            try:
+                for mod_name in prereq_modules:
+                    try:
+                        importlib.import_module(mod_name)
+                    except Exception:
+                        pass
+                import rembg
+                return rembg
+            except ImportError as e:
+                last_err = e
+                # Si estamos en entorno Python no congelado y falta el paquete, intentar instalarlo
+                if attempt == 1 and not getattr(sys, "frozen", False):
+                    try:
+                        import subprocess
+                        startupinfo = None
+                        if os.name == "nt":
+                            startupinfo = subprocess.STARTUPINFO()
+                            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                        subprocess.run(
+                            [sys.executable, "-m", "pip", "install", "rembg[cpu]", "onnxruntime"],
+                            check=False,
+                            startupinfo=startupinfo,
+                            capture_output=True,
+                        )
+                    except Exception:
+                        pass
+        if last_err:
+            raise last_err
+        import rembg
+        return rembg
+
+    @classmethod
+    def get_session(cls, model_name="u2net"):
+        with cls._get_lock():
+            cls._ensure_streams()
+            rembg = cls._load_rembg()
+            if model_name not in cls._SESSION_CACHE:
+                cls._SESSION_CACHE[model_name] = rembg.new_session(model_name)
+            return rembg, cls._SESSION_CACHE[model_name]
+
+    @classmethod
+    def prewarm(cls, model_name="u2net"):
+        """Pre-carga rembg y la sesión por defecto en segundo plano al iniciar la app
+        para que el primer uso sea inmediato y descargue el modelo si aún no existe."""
+        try:
+            cls.get_session(model_name)
+        except Exception:
+            pass
+
     @staticmethod
     def quitar_fondo(ruta_origen, ruta_destino, model_name="u2net", alpha_matting=False):
         try:
-            import rembg
+            rembg, session = BackgroundRemoverLogic.get_session(model_name)
             with open(ruta_origen, "rb") as input_file:
                 input_data = input_file.read()
-                
-            session = rembg.new_session(model_name)
+
             output_data = rembg.remove(
-                input_data, 
-                session=session, 
+                input_data,
+                session=session,
                 post_process_mask=True,
                 alpha_matting=alpha_matting
             )
-            
+
             # Ensure the destination path is absolute and exists
             ruta_destino = _prepare_dest(ruta_destino)
-            
+
             with open(ruta_destino, "wb") as output_file:
                 output_file.write(output_data)
-                
+
             return f"✅ Fondo eliminado: {os.path.basename(ruta_destino)}"
-        except ImportError:
-            return "⚠️ Error: La librería rembg no está instalada."
         except Exception as e:
             return f"⚠️ Error quitando fondo a {os.path.basename(ruta_origen)}: {e}"
 
@@ -600,6 +695,137 @@ class SubtitleGeneratorLogic:
             return f"⚠️ Error generando subtítulos: {e}"
 
 class WatermarkLogic:
+    @staticmethod
+    def _parse_rgb_color(color_val):
+        if isinstance(color_val, (tuple, list)) and len(color_val) >= 3:
+            return int(color_val[0]), int(color_val[1]), int(color_val[2])
+        if isinstance(color_val, str):
+            c = color_val.strip().lstrip("#")
+            if len(c) == 6:
+                try:
+                    return int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
+                except Exception:
+                    pass
+        return 255, 255, 255
+
+    @staticmethod
+    def render_watermark_pil(base_image, params: dict):
+        """Renderiza marca de agua avanzada (texto o logo) con soporte para:
+        - Color de texto personalizado
+        - Tamaño de letra / escala
+        - Espaciado entre letras (letter_spacing)
+        - Separación entre repeticiones (separation)
+        - Dirección / Ángulo de rotación (angle)
+        - Modos: 'xy' (coordenadas X-Y ajustables 0-100%), 'mosaic_diag', 'mosaic_horiz', 'mosaic_vert'
+        """
+        from PIL import Image, ImageDraw, ImageFont
+
+        base_rgba = base_image.convert("RGBA")
+        w, h = base_rgba.size
+        if w <= 0 or h <= 0:
+            return base_rgba
+
+        scale_factor = max(w, h) / 1000.0
+        wm_type = params.get("wm_type", "texto")
+        text = params.get("text", "Media Hub") or "Media Hub"
+        logo = params.get("logo", None)
+        opac = max(5, min(100, int(params.get("opacity", 70))))
+        font_size_param = max(8, int(params.get("font_size", 40)))
+        letter_spacing_param = max(0, int(params.get("letter_spacing", 0)))
+        separation_param = max(15, int(params.get("separation", 120)))
+        mode = params.get("mode", "xy")
+        pos_x = max(0, min(100, int(params.get("pos_x", 50))))
+        pos_y = max(0, min(100, int(params.get("pos_y", 50))))
+        angle = int(params.get("angle", 0))
+        r, g, b = WatermarkLogic._parse_rgb_color(params.get("color", "#FFFFFF"))
+
+        # 1. Construir estampa individual (stamp)
+        if wm_type == "imagen" and logo and os.path.exists(logo):
+            stamp = Image.open(logo).convert("RGBA")
+            if opac < 100:
+                alpha_ch = stamp.split()[3].point(lambda p: int(p * (opac / 100.0)))
+                stamp.putalpha(alpha_ch)
+            wm_ratio = max(0.05, stamp.width / max(1, stamp.height))
+            new_w = max(16, int(w * (font_size_param / 220.0)))
+            new_h = max(16, int(new_w / wm_ratio))
+            stamp = stamp.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        else:
+            actual_font_size = max(10, int(font_size_param * scale_factor))
+            font = None
+            for font_candidate in ("arialbd.ttf", "arial.ttf", "segoeuib.ttf", "segoeui.ttf"):
+                try:
+                    font = ImageFont.truetype(font_candidate, actual_font_size)
+                    break
+                except Exception:
+                    continue
+            if font is None:
+                font = ImageFont.load_default()
+
+            actual_spacing = int(letter_spacing_param * scale_factor)
+            dummy = Image.new("RGBA", (1, 1))
+            d_dummy = ImageDraw.Draw(dummy)
+
+            char_widths = []
+            max_top = 0
+            max_bottom = actual_font_size
+            for idx, ch in enumerate(text):
+                bbox = d_dummy.textbbox((0, 0), ch, font=font)
+                cw = max(1, int(d_dummy.textlength(ch, font=font)))
+                char_widths.append(cw)
+                if idx == 0 or bbox[1] < max_top:
+                    max_top = bbox[1]
+                if bbox[3] > max_bottom:
+                    max_bottom = bbox[3]
+
+            tw = sum(char_widths) + actual_spacing * max(0, len(text) - 1)
+            th = max(actual_font_size, max_bottom - max_top)
+            pad = max(6, int(actual_font_size * 0.35))
+
+            stamp = Image.new("RGBA", (max(1, tw + pad * 2), max(1, th + pad * 2)), (0, 0, 0, 0))
+            d_stamp = ImageDraw.Draw(stamp)
+            alpha_val = int(255 * (opac / 100.0))
+
+            cur_x = pad
+            draw_y = pad - max_top
+            for ch, cw in zip(text, char_widths):
+                d_stamp.text((cur_x, draw_y), ch, fill=(r, g, b, alpha_val), font=font)
+                cur_x += cw + actual_spacing
+
+        # 2. Aplicar rotación según modo y ángulo
+        rot_angle = angle
+        if mode == "mosaic_diag" and angle == 0:
+            rot_angle = 35
+        elif mode == "mosaic_vert" and angle == 0:
+            rot_angle = 90
+
+        if rot_angle != 0:
+            stamp = stamp.rotate(rot_angle, expand=True, resample=Image.Resampling.BICUBIC)
+
+        # 3. Componer capa de marca de agua según el modo
+        layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        sw, sh = stamp.size
+
+        if mode == "xy":
+            x = int((w - sw) * (pos_x / 100.0))
+            y = int((h - sh) * (pos_y / 100.0))
+            layer.paste(stamp, (x, y), stamp)
+        else:
+            gap = max(12, int(separation_param * scale_factor))
+            step_x = max(16, sw + gap)
+            step_y = max(16, sh + gap)
+
+            row_idx = 0
+            for y in range(-sh, h + sh, step_y):
+                x_offset = (step_x // 2) if (mode == "mosaic_diag" and row_idx % 2 == 1) else 0
+                col_idx = 0
+                for x in range(-sw + x_offset, w + sw, step_x):
+                    y_offset = (step_y // 2) if (mode == "mosaic_vert" and col_idx % 2 == 1) else 0
+                    layer.paste(stamp, (x, y + y_offset), stamp)
+                    col_idx += 1
+                row_idx += 1
+
+        return Image.alpha_composite(base_rgba, layer)
+
     @staticmethod
     def aplicar_marca_agua(ruta_origen, ruta_destino, watermark_path, position="bottom-right", opacity=100):
         import os
