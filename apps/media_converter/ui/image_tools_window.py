@@ -121,8 +121,8 @@ class ImageToolsWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(t("app_title"))
-        self.resize(1080, 700)
-        self.setMinimumSize(980, 620)
+        self.resize(1180, 760)
+        self.setMinimumSize(1040, 680)
 
         icon_path = get_asset("Media-Hub.ico")
         if os.path.exists(icon_path):
@@ -238,7 +238,8 @@ class ImageToolsWindow(QMainWindow):
         # ── Tab 0: Quitar Fondo ──────────────────────────────────────────────
         tab_bg = QWidget()
         t0_layout = QHBoxLayout(tab_bg)
-        t0_layout.setContentsMargins(0, 0, 0, 0)
+        t0_layout.setContentsMargins(12, 10, 12, 10)
+        t0_layout.setSpacing(12)
         t0_layout.addWidget(QLabel(t("lbl_model")))
         self.combo_bg_model = QComboBox()
         self.combo_bg_model.addItems([
@@ -248,6 +249,7 @@ class ImageToolsWindow(QMainWindow):
             "silueta (Rápido)"
         ])
         t0_layout.addWidget(self.combo_bg_model)
+        t0_layout.addSpacing(10)
         self.chk_alpha = QCheckBox("Alpha Matting")
         t0_layout.addWidget(self.chk_alpha)
         t0_layout.addStretch()
@@ -256,8 +258,8 @@ class ImageToolsWindow(QMainWindow):
         # ── Tab 1: Calidad 4x (con botones circulares 1, 2, 3, 4) ────────────
         tab_qual = QWidget()
         t1_layout = QHBoxLayout(tab_qual)
-        t1_layout.setContentsMargins(0, 0, 0, 0)
-        t1_layout.setSpacing(10)
+        t1_layout.setContentsMargins(12, 10, 12, 10)
+        t1_layout.setSpacing(12)
         t1_layout.addWidget(QLabel(t("lbl_ai_model")))
         self.combo_qual_model = QComboBox()
         self.combo_qual_model.addItems([
@@ -266,7 +268,7 @@ class ImageToolsWindow(QMainWindow):
         ])
         t1_layout.addWidget(self.combo_qual_model)
 
-        t1_layout.addSpacing(8)
+        t1_layout.addSpacing(12)
         t1_layout.addWidget(QLabel(t("lbl_scale")))
 
         self.tta_level_group = QButtonGroup(self)
@@ -275,12 +277,12 @@ class ImageToolsWindow(QMainWindow):
 
         circles_layout = QHBoxLayout()
         circles_layout.setContentsMargins(0, 0, 0, 0)
-        circles_layout.setSpacing(6)
+        circles_layout.setSpacing(8)
 
         for lvl in (1, 2, 3, 4):
             c_btn = QPushButton(str(lvl))
             c_btn.setObjectName("ttaCircleBtn")
-            c_btn.setFixedSize(34, 34)
+            c_btn.setFixedSize(36, 36)
             c_btn.setCheckable(True)
             c_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             c_btn.setToolTip(f"Nivel de procesamiento TTA / Escala: {lvl}")
@@ -292,7 +294,7 @@ class ImageToolsWindow(QMainWindow):
             circles_layout.addWidget(c_btn)
 
         t1_layout.addLayout(circles_layout)
-        t1_layout.addSpacing(8)
+        t1_layout.addSpacing(12)
 
         self.chk_tta = QCheckBox(t("chk_tta"))
         t1_layout.addWidget(self.chk_tta)
@@ -302,35 +304,36 @@ class ImageToolsWindow(QMainWindow):
         # ── Tab 2: Marca de Agua Avanzada ────────────────────────────────────
         tab_wm = QWidget()
         t2_main_layout = QVBoxLayout(tab_wm)
-        t2_main_layout.setContentsMargins(0, 0, 0, 0)
-        t2_main_layout.setSpacing(8)
+        t2_main_layout.setContentsMargins(12, 10, 12, 10)
+        t2_main_layout.setSpacing(10)
 
         # Fila 1: Tipo, Texto + Color (o Logo), Modo de colocación y Opacidad
         t2_row1 = QHBoxLayout()
         t2_row1.setContentsMargins(0, 0, 0, 0)
-        t2_row1.setSpacing(8)
+        t2_row1.setSpacing(10)
 
         t2_row1.addWidget(QLabel(t("lbl_type")))
         self.combo_wm_type = QComboBox()
         self.combo_wm_type.addItems([t("type_text"), t("type_image")])
         self.combo_wm_type.currentIndexChanged.connect(self._on_wm_type_changed)
         t2_row1.addWidget(self.combo_wm_type)
+        t2_row1.addSpacing(6)
 
         # Contenedor de Texto + Selector de Color
         self.wm_text_container = QWidget()
         wt_layout = QHBoxLayout(self.wm_text_container)
         wt_layout.setContentsMargins(0, 0, 0, 0)
-        wt_layout.setSpacing(6)
+        wt_layout.setSpacing(8)
         wt_layout.addWidget(QLabel(t("lbl_text")))
         self.txt_watermark = QLineEdit("Media Hub")
-        self.txt_watermark.setFixedWidth(135)
+        self.txt_watermark.setFixedWidth(145)
         self.txt_watermark.textChanged.connect(self._update_watermark_live_preview)
         wt_layout.addWidget(self.txt_watermark)
 
         wt_layout.addWidget(QLabel(t("lbl_color")))
         self.btn_wm_color = QPushButton()
         self.btn_wm_color.setObjectName("colorSwatchBtn")
-        self.btn_wm_color.setFixedSize(78, 30)
+        self.btn_wm_color.setFixedSize(82, 30)
         self.btn_wm_color.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_wm_color.clicked.connect(self._pick_watermark_color)
         self._refresh_color_button_style()
@@ -341,7 +344,7 @@ class ImageToolsWindow(QMainWindow):
         self.wm_image_container = QWidget()
         wi_layout = QHBoxLayout(self.wm_image_container)
         wi_layout.setContentsMargins(0, 0, 0, 0)
-        wi_layout.setSpacing(6)
+        wi_layout.setSpacing(8)
         self.btn_select_logo = QPushButton(t("btn_select_logo"))
         self.btn_select_logo.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_select_logo.clicked.connect(self._pick_logo_file)
@@ -351,6 +354,7 @@ class ImageToolsWindow(QMainWindow):
         wi_layout.addWidget(self.lbl_logo_name)
         self.wm_image_container.setVisible(False)
         t2_row1.addWidget(self.wm_image_container)
+        t2_row1.addSpacing(6)
 
         t2_row1.addWidget(QLabel(t("lbl_mode")))
         self.combo_wm_mode = QComboBox()
@@ -360,6 +364,7 @@ class ImageToolsWindow(QMainWindow):
         self.combo_wm_mode.addItem(t("mode_mosaic_vert"), "mosaic_vert")
         self.combo_wm_mode.currentIndexChanged.connect(self._on_wm_mode_changed)
         t2_row1.addWidget(self.combo_wm_mode)
+        t2_row1.addSpacing(6)
 
         t2_row1.addWidget(QLabel(t("lbl_opacity")))
         self.spin_wm_opac = QSpinBox()
@@ -375,7 +380,7 @@ class ImageToolsWindow(QMainWindow):
         # Fila 2: Tamaño, Espaciado de letras, Separación de mosaico, Coordenadas X-Y y Dirección (°)
         t2_row2 = QHBoxLayout()
         t2_row2.setContentsMargins(0, 0, 0, 0)
-        t2_row2.setSpacing(8)
+        t2_row2.setSpacing(10)
 
         t2_row2.addWidget(QLabel(t("lbl_font_size")))
         self.spin_wm_size = QSpinBox()
@@ -438,11 +443,13 @@ class ImageToolsWindow(QMainWindow):
         # ── Tab 3: Comprimir ─────────────────────────────────────────────────
         tab_comp = QWidget()
         t3_layout = QHBoxLayout(tab_comp)
-        t3_layout.setContentsMargins(0, 0, 0, 0)
+        t3_layout.setContentsMargins(12, 10, 12, 10)
+        t3_layout.setSpacing(14)
         t3_layout.addWidget(QLabel(t("lbl_format")))
         self.combo_comp_fmt = QComboBox()
         self.combo_comp_fmt.addItems(["webp", "jpg", "png"])
         t3_layout.addWidget(self.combo_comp_fmt)
+        t3_layout.addSpacing(10)
         t3_layout.addWidget(QLabel(t("lbl_quality")))
         self.slider_quality = QSlider(Qt.Orientation.Horizontal)
         self.slider_quality.setRange(20, 100)
@@ -791,6 +798,11 @@ class ImageToolsWindow(QMainWindow):
                 color: #F3F4F6;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             }
+            QLabel {
+                color: #E5E7EB;
+                font-size: 9.5pt;
+                font-weight: 500;
+            }
             QFrame#sidebar {
                 background-color: #161822;
                 border-right: 1px solid #232736;
@@ -810,7 +822,7 @@ class ImageToolsWindow(QMainWindow):
                 color: #9CA3AF;
                 border: none;
                 border-radius: 8px;
-                padding: 10px 14px;
+                padding: 11px 16px;
                 font-size: 10pt;
                 font-weight: 600;
                 text-align: left;
@@ -828,7 +840,7 @@ class ImageToolsWindow(QMainWindow):
                 color: #D1D5DB;
                 border: 1px solid #2B3144;
                 border-radius: 8px;
-                padding: 8px 12px;
+                padding: 9px 14px;
                 font-size: 9pt;
                 font-weight: 600;
             }
@@ -845,8 +857,8 @@ class ImageToolsWindow(QMainWindow):
                 border-radius: 12px;
             }
             QLabel#fileLabel {
-                color: #9CA3AF;
-                font-size: 9.5pt;
+                color: #D1D5DB;
+                font-size: 10pt;
                 font-weight: 500;
             }
             QPushButton#actionBtnPrimary {
@@ -854,19 +866,24 @@ class ImageToolsWindow(QMainWindow):
                 color: #FFFFFF;
                 border: 1px solid #323A52;
                 border-radius: 8px;
-                padding: 8px 16px;
+                padding: 8px 18px;
                 font-size: 9.5pt;
                 font-weight: 600;
             }
             QPushButton#actionBtnPrimary:hover {
                 background-color: #2B334A;
             }
+            QStackedWidget {
+                background-color: #161822;
+                border: 1px solid #232736;
+                border-radius: 12px;
+            }
             QPushButton#ttaCircleBtn {
                 background-color: #161822;
                 color: #9CA3AF;
                 border: 1.5px solid #2B3144;
-                border-radius: 17px;
-                font-size: 9.5pt;
+                border-radius: 18px;
+                font-size: 10pt;
                 font-weight: 700;
                 padding: 0px;
             }
@@ -885,7 +902,7 @@ class ImageToolsWindow(QMainWindow):
                 color: #FFFFFF;
                 border: none;
                 border-radius: 10px;
-                padding: 10px 22px;
+                padding: 10px 24px;
                 font-size: 10.5pt;
                 font-weight: 700;
             }
@@ -901,7 +918,7 @@ class ImageToolsWindow(QMainWindow):
                 color: #FFFFFF;
                 border: none;
                 border-radius: 10px;
-                padding: 10px 22px;
+                padding: 10px 24px;
                 font-size: 10.5pt;
                 font-weight: 700;
             }
@@ -913,12 +930,15 @@ class ImageToolsWindow(QMainWindow):
                 color: #4B5563;
             }
             QComboBox, QSpinBox, QLineEdit {
-                background-color: #161822;
-                color: #F3F4F6;
+                background-color: #1A1D28;
+                color: #F9FAFB;
                 border: 1px solid #2B3144;
                 border-radius: 6px;
-                padding: 5px 8px;
-                font-size: 9pt;
+                padding: 6px 10px;
+                font-size: 9.5pt;
+            }
+            QComboBox:hover, QSpinBox:hover, QLineEdit:hover {
+                border-color: #3B82F6;
             }
             QSpinBox:disabled {
                 background-color: #12141C;
@@ -949,12 +969,12 @@ class ImageToolsWindow(QMainWindow):
             }
             QCheckBox {
                 color: #D1D5DB;
-                font-size: 9pt;
+                font-size: 9.5pt;
                 font-weight: 500;
             }
             QLabel#statusLabel {
                 color: #9CA3AF;
-                font-size: 9pt;
+                font-size: 9.5pt;
                 font-weight: 500;
             }
             QProgressBar {
